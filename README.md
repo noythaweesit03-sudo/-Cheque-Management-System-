@@ -86,3 +86,12 @@
 - **Backend**: Node.js, Express 4, tsx
 - **Build Tool**: Vite 8
 - **PDF & Canvas**: jsPDF, Canvas 2D Vector Rendering
+
+---
+
+## 📚 เอกสารคู่มือแนะนำ (Documentation)
+
+- 📖 [คู่มือการติดตั้งและใช้งานจริงในหน่วยงาน (INSTALL.md)](./INSTALL.md)
+- 🐙 [คู่มือการนำโปรเจกต์ขึ้น GitHub ทีละขั้นตอน (GITHUB_GUIDE.md)](./GITHUB_GUIDE.md)
+- 📝 [บันทึกประวัติการพัฒนาและอัปเดตเวอร์ชัน (UPDATE.md)](./UPDATE.md)
+
