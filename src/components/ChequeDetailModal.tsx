@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   FileText,
   AlertTriangle,
+  Copy,
 } from 'lucide-react';
 
 interface ChequeDetailModalProps {
@@ -139,7 +140,7 @@ export const ChequeDetailModal: React.FC<ChequeDetailModalProps> = ({
             {/* Row 1: Date & Bank */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-slate-200 pb-3">
               <div>
-                <span className="text-xs font-semibold text-slate-500 block">วันที่สั่งจ่ายบนเช็ค:</span>
+                <span className="text-xs font-semibold text-slate-500 block">วันที่ออกเช็ค:</span>
                 <span className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5 mt-0.5">
                   <Calendar className="w-4 h-4 text-red-700" />
                   <span>{formatThaiDate(cheque.chequeDate || cheque.stubDate)}</span>
@@ -262,10 +263,10 @@ export const ChequeDetailModal: React.FC<ChequeDetailModalProps> = ({
                   </div>
                   <div>
                     <h4 className="text-sm font-black text-slate-900">
-                      ประวัติการพิมพ์เช็คฉบับนี้ (Print History & Audit)
+                      ประวัติการพิมพ์เช็คฉบับนี้
                     </h4>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      บันทึกประวัติการพิมพ์ ใครพิมพ์ จำนวนครั้งที่พิมพ์ และพิมพ์เมื่อไร
+                      บันทึกประวัติการพิมพ์ ผู้สั่งพิมพ์ จำนวนครั้ง และวันเวลาที่พิมพ์
                     </p>
                   </div>
                 </div>
@@ -450,10 +451,12 @@ export const ChequeDetailModal: React.FC<ChequeDetailModalProps> = ({
                   onClose();
                   onDuplicateAsNew(cheque);
                 }}
-                className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-800 border-2 border-red-300 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                className="px-3.5 py-2.5 bg-red-50 hover:bg-red-100 text-red-800 border-2 border-red-300 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
                 title="ดึงข้อมูลเจ้านี้มาออกเป็นเช็คฉบับใหม่ในรอบเดือนนี้ (ไม่ถือว่าพิมพ์ซ้ำ)"
               >
-                <span>📋 นำมาออกเช็คใหม่ (ไม่ถือว่าพิมพ์ซ้ำ)</span>
+                <Copy className="w-4 h-4 text-red-700" />
+                <span className="hidden sm:inline">นำมาออกเช็คใหม่</span>
+                <span className="sm:hidden">ออกเช็คใหม่</span>
               </button>
             )}
           </div>

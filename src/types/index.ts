@@ -28,6 +28,7 @@ export interface Cheque {
   stubPayeeName: string; // ชื่อผู้รับต้นขั้วเช็ค
   chequePayeeName: string; // ชื่อผู้รับเงิน (ตัวเช็ค)
   dikaNumber?: string; // เลขที่ฎีกาคลังรับ (e.g. 123/69) - ไม่บังคับกรอก
+  fiscalYear?: number; // ปีงบประมาณ พ.ศ. เช่น 2567, 2568, 2569, 2570
   bankAccountNo?: string; // เลขที่บัญชีธนาคารสั่งจ่าย
   items: ChequeItem[]; // รายการฎีกาและจำนวนเงิน
   totalAmount: number; // ยอดรวมก่อนหักภาษี

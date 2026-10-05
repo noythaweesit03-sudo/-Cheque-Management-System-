@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Cheque } from '../types';
-import { formatThaiDate, formatThaiDateTime } from '../utils/dateUtils';
+import { formatThaiDate, formatThaiDateTime, getThaiFiscalYear } from '../utils/dateUtils';
 import { ChequeDetailModal } from './ChequeDetailModal';
 import {
   TrendingUp,
@@ -28,12 +28,62 @@ interface ExecutiveSummaryViewProps {
   onNavigateToHistory?: () => void;
 }
 
+// Smooth Count-Up Number Component for Financial Stats
+const AnimatedNumber: React.FC<{ value: number; decimals?: number }> = ({ value, decimals = 2 }) => {
+  const [displayVal, setDisplayVal] = useState(value);
+
+  useEffect(() => {
+    let startTimestamp: number | null = null;
+    const startVal = displayVal;
+    const diff = value - startVal;
+    if (diff === 0) return;
+    const duration = 500;
+
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const ease = 1 - Math.pow(1 - progress, 3);
+      setDisplayVal(startVal + diff * ease);
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        setDisplayVal(value);
+      }
+    };
+    const reqId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(reqId);
+  }, [value]);
+
+  return (
+    <span>
+      {displayVal.toLocaleString('th-TH', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      })}
+    </span>
+  );
+};
+
 export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
   cheques,
   onOpenPrintModal,
   onNavigateToHistory,
 }) => {
   const [timeFilter, setTimeFilter] = useState<'ALL' | 'MONTH' | 'TODAY'>('ALL');
+  const [fiscalYearFilter, setFiscalYearFilter] = useState<number | 'ALL'>('ALL');
+
+  // Available fiscal years
+  const availableFiscalYears = useMemo(() => {
+    const years = new Set<number>();
+    const currentFY = getThaiFiscalYear();
+    years.add(currentFY);
+    years.add(currentFY - 1);
+    years.add(currentFY + 1);
+    cheques.forEach((c) => {
+      years.add(c.fiscalYear || getThaiFiscalYear(c.chequeDate || c.stubDate, c.dikaNumber));
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [cheques]);
 
   // Cheque Detail popup state
   const [selectedChequeForModal, setSelectedChequeForModal] = useState<Cheque | null>(null);
@@ -51,11 +101,17 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
   const currentMonthPrefix = now.toISOString().slice(0, 7); // YYYY-MM
   const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
 
+  // Cheques filtered by Fiscal Year first
+  const chequesByFY = cheques.filter((c) => {
+    if (fiscalYearFilter === 'ALL') return true;
+    return (c.fiscalYear || getThaiFiscalYear(c.chequeDate || c.stubDate, c.dikaNumber)) === fiscalYearFilter;
+  });
+
   // Active / Void / Pending / Printed
-  const activeCheques = cheques.filter((c) => c.status !== 'VOID');
-  const voidCheques = cheques.filter((c) => c.status === 'VOID');
-  const printedCheques = cheques.filter((c) => c.status !== 'VOID' && c.printCount > 0);
-  const pendingCheques = cheques.filter((c) => c.status !== 'VOID' && c.printCount === 0);
+  const activeCheques = chequesByFY.filter((c) => c.status !== 'VOID');
+  const voidCheques = chequesByFY.filter((c) => c.status === 'VOID');
+  const printedCheques = chequesByFY.filter((c) => c.status !== 'VOID' && c.printCount > 0);
+  const pendingCheques = chequesByFY.filter((c) => c.status !== 'VOID' && c.printCount === 0);
 
   // Recently printed cheques for Print History Widget
   const recentPrintedCheques = [...printedCheques]
@@ -134,14 +190,32 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
           </p>
         </div>
 
-        {/* Time Filter & Print Report */}
+        {/* Fiscal Year, Time Filter & Print Report */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Fiscal Year Selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-bold text-slate-600 hidden sm:inline">ปีงบ:</span>
+            <select
+              value={fiscalYearFilter}
+              onChange={(e) => setFiscalYearFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+              className="h-10 px-3 text-xs sm:text-sm font-bold text-slate-800 bg-slate-100 hover:bg-white border border-slate-300 rounded-xl focus:border-red-600 focus:outline-none cursor-pointer transition-all shadow-2xs"
+              title="กรองรายงานสรุปตามรอบปีงบประมาณ"
+            >
+              <option value="ALL">🏛️ ทุกปีงบประมาณ</option>
+              {availableFiscalYears.map((fy) => (
+                <option key={fy} value={fy}>
+                  🏛️ ปีงบประมาณ {fy}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Filter Buttons */}
           <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
             <button
               type="button"
               onClick={() => setTimeFilter('ALL')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 timeFilter === 'ALL'
                   ? 'bg-red-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -152,7 +226,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             <button
               type="button"
               onClick={() => setTimeFilter('MONTH')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 timeFilter === 'MONTH'
                   ? 'bg-red-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -163,7 +237,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             <button
               type="button"
               onClick={() => setTimeFilter('TODAY')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 timeFilter === 'TODAY'
                   ? 'bg-red-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -176,16 +250,18 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
           <button
             type="button"
             onClick={handlePrintReport}
-            className="h-10 px-4 bg-white hover:bg-red-50 text-red-700 border-2 border-red-300 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-2 cursor-pointer shadow-xs no-print"
+            title="พิมพ์รายงานสรุปผู้บริหารขนาด A4"
+            className="h-10 px-3 sm:px-4 bg-white hover:bg-red-50 text-red-700 border-2 border-red-300 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-1.5 sm:gap-2 cursor-pointer shadow-xs no-print"
           >
             <Printer className="w-4 h-4 text-red-600" />
-            <span>พิมพ์รายงานสรุป (A4)</span>
+            <span className="hidden sm:inline">พิมพ์รายงานสรุป (A4)</span>
+            <span className="sm:hidden">รายงาน A4</span>
           </button>
         </div>
       </div>
 
       {/* 4 Core Summary Stat Cards (Red & White Theme - คลิกเพื่อดูรายการป็อปอัปได้) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Card 1: Total Amount */}
         <div
           onClick={() =>
@@ -209,7 +285,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-red-700 tabular-nums">
-            {totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} <span className="text-sm font-bold text-slate-500">บาท</span>
+            <AnimatedNumber value={totalAmount} decimals={2} /> <span className="text-sm font-bold text-slate-500">บาท</span>
           </div>
           <div className="text-xs text-slate-500 mt-2 font-medium flex items-center justify-between">
             <span>หักภาษี: <strong className="text-slate-800">{totalTaxWithheld.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บ.</strong></span>
@@ -239,7 +315,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums">
-            {displayCheques.length} <span className="text-sm font-bold text-slate-500">ฉบับ</span>
+            <AnimatedNumber value={displayCheques.length} decimals={0} /> <span className="text-sm font-bold text-slate-500">ฉบับ</span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 mt-2 text-xs font-semibold">
             {/* Click to view only printed cheques */}
@@ -326,7 +402,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums">
-            {monthAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} <span className="text-sm font-bold text-slate-500">บาท</span>
+            <AnimatedNumber value={monthAmount} decimals={2} /> <span className="text-sm font-bold text-slate-500">บาท</span>
           </div>
           <div className="text-xs text-slate-500 mt-2 font-medium flex items-center justify-between">
             <span>รวม <strong className="text-slate-800">{monthCheques.length} ฉบับ</strong> ในรอบเดือน</span>
@@ -354,7 +430,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             </span>
           </div>
           <div className="text-2xl sm:text-3xl font-black text-slate-900 tabular-nums">
-            {todayAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} <span className="text-sm font-bold text-slate-500">บาท</span>
+            <AnimatedNumber value={todayAmount} decimals={2} /> <span className="text-sm font-bold text-slate-500">บาท</span>
           </div>
           <div className="text-xs text-slate-500 mt-2 font-medium flex items-center justify-between">
             <span>ออกเช็ควันนี้: <strong className="text-slate-800">{todayCheques.length} ฉบับ</strong></span>
@@ -608,13 +684,13 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
-                <span>📜 ประวัติการพิมพ์เช็คล่าสุด</span>
+                <span>ประวัติการพิมพ์เช็คล่าสุด</span>
                 <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
                   พิมพ์แล้ว {printedCheques.length} ฉบับ
                 </span>
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                รายงานว่าใครพิมพ์แล้ว จำนวนการพิมพ์ และพิมพ์เมื่อไร (คลิกที่แถวใดเพื่อเปิดป็อปอัปดูรายละเอียดฉบับเต็ม)
+                รายงานผู้สั่งพิมพ์ จำนวนครั้ง และวันเวลาที่พิมพ์ล่าสุด (คลิกแถวเพื่อดูรายละเอียด)
               </p>
             </div>
           </div>
@@ -640,7 +716,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-700 text-xs font-bold border-b border-slate-200">
                 <tr>
-                  <th className="py-2.5 px-3">วันที่บนเช็ค</th>
+                  <th className="py-2.5 px-3">วันที่ออกเช็ค</th>
                   <th className="py-2.5 px-3">เลขที่ฎีกา / เช็ค</th>
                   <th className="py-2.5 px-3">สั่งจ่ายให้แก่</th>
                   <th className="py-2.5 px-3 text-right">ยอดสั่งจ่าย</th>
@@ -648,7 +724,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
                   <th className="py-2.5 px-3 text-left">ใครพิมพ์แล้ว (ผู้พิมพ์)</th>
                   <th className="py-2.5 px-3 text-center">จำนวนครั้งที่พิมพ์</th>
                   <th className="py-2.5 px-3 text-left">พิมพ์เมื่อไร</th>
-                  <th className="py-2.5 px-3 text-center">ดูป็อปอัป</th>
+                  <th className="py-2.5 px-3 text-center w-14">ดู</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -657,7 +733,7 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
                     key={item.id}
                     onClick={() => setSelectedChequeForModal(item)}
                     className="hover:bg-red-50/60 transition-colors cursor-pointer group"
-                    title="คลิกเพื่อเปิดดูรายละเอียดเช็คและประวัติการพิมพ์ฉบับเต็ม"
+                    title="คลิกดูรายละเอียดเช็ค"
                   >
                     <td className="py-3 px-3 whitespace-nowrap text-xs font-semibold text-slate-800">
                       {formatThaiDate(item.chequeDate || item.stubDate)}
@@ -686,8 +762,12 @@ export const ExecutiveSummaryView: React.FC<ExecutiveSummaryViewProps> = ({
                       </div>
                     </td>
                     <td className="py-3 px-3 text-center whitespace-nowrap">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-950 border border-emerald-300">
-                        พิมพ์แล้ว {item.printCount} ครั้ง
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-50 text-emerald-950 border border-emerald-300 shadow-2xs">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span>พิมพ์แล้ว {item.printCount} ครั้ง</span>
                       </span>
                     </td>
                     <td className="py-3 px-3 text-xs text-slate-600 whitespace-nowrap font-medium">

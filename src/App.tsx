@@ -146,11 +146,11 @@ export default function App() {
       />
 
       {/* Main Full-Width Content Viewport (ไม่บีบแคบ ไม่เหลือข้างๆ เยอะ) */}
-      <main className="flex-1 w-full px-3 sm:px-6 lg:px-8 py-5">
+      <main className="flex-1 w-full px-2.5 sm:px-6 lg:px-8 py-3.5 sm:py-5">
         
         {/* Toast Notification */}
         {toastMessage && (
-          <div className="fixed bottom-5 right-5 z-50 p-4 bg-slate-900 text-white text-sm font-bold rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
+          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-5 z-50 p-3.5 sm:p-4 bg-slate-900 text-white text-xs sm:text-sm font-bold rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 max-w-md">
             <CheckCircle2 className="w-5 h-5 text-red-400 shrink-0" />
             <span>{toastMessage}</span>
           </div>

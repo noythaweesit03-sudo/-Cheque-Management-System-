@@ -1,5 +1,5 @@
 import { AuditLog, BankTemplateConfig, BankType, Cheque, ChequePrintLog, User, UserRole, UserStatus } from '../types';
-import { getTodayISODate } from './dateUtils';
+import { getTodayISODate, getThaiFiscalYear } from './dateUtils';
 import { thaiBahtText } from './thaiBahtText';
 
 const STORAGE_KEYS = {
@@ -699,7 +699,18 @@ export class StorageService {
       return INITIAL_CHEQUES;
     }
     try {
-      return JSON.parse(data);
+      const parsed: Cheque[] = JSON.parse(data);
+      let needsUpdate = false;
+      parsed.forEach((c) => {
+        if (!c.fiscalYear) {
+          c.fiscalYear = getThaiFiscalYear(c.chequeDate || c.stubDate, c.dikaNumber);
+          needsUpdate = true;
+        }
+      });
+      if (needsUpdate) {
+        localStorage.setItem(STORAGE_KEYS.CHEQUES, JSON.stringify(parsed));
+      }
+      return parsed;
     } catch {
       return INITIAL_CHEQUES;
     }
@@ -764,9 +775,11 @@ export class StorageService {
     const thaiText = thaiBahtText(netAmount > 0 ? netAmount : total);
 
     const initialStatus = cheque.status || (cheque.printCount > 0 ? 'ISSUED' : 'PENDING');
+    const fiscalYear = cheque.fiscalYear || getThaiFiscalYear(cheque.chequeDate || cheque.stubDate, cheque.dikaNumber);
 
     const updatedCheque: Cheque = {
       ...cheque,
+      fiscalYear,
       totalAmount: total,
       withholdingTaxAmount: taxAmount,
       netPaidAmount: netAmount,

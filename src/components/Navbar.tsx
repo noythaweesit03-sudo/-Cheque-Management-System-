@@ -88,18 +88,20 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Zone 2: Tabs (Admin sees all 4, User sees only write & history) */}
-        <nav className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <nav className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 max-w-full flex-nowrap sm:flex-wrap shrink-0">
           {/* Tab 1: Fast Cheque Writer */}
           <button
             type="button"
             onClick={() => onSelectTab('write')}
-            className={`px-4 sm:px-5 py-2.5 text-sm sm:text-base font-extrabold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+            className={`px-3.5 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-base font-extrabold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 sm:gap-2 shrink-0 ${
               currentTab === 'write'
                 ? 'bg-white text-red-800 shadow-md ring-2 ring-red-300'
                 : 'text-white hover:bg-red-700/80 bg-red-900/40 border border-red-700/60'
             }`}
           >
-            <span>✍️ เขียนและสั่งพิมพ์เช็คด่วน</span>
+            <span>✍️</span>
+            <span className="hidden sm:inline">เขียนและสั่งพิมพ์เช็คด่วน</span>
+            <span className="sm:hidden">เขียนเช็ค</span>
           </button>
 
           {/* Tab 2: Executive Dashboard (Admin Only) */}
@@ -107,13 +109,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               type="button"
               onClick={() => onSelectTab('executive')}
-              className={`px-3.5 sm:px-4 py-2.5 text-sm sm:text-base font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-base font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 currentTab === 'executive'
                   ? 'bg-white text-red-800 shadow-md ring-2 ring-red-300'
                   : 'text-red-100 hover:text-white hover:bg-red-700/80 bg-red-900/30 border border-transparent hover:border-red-700/50'
               }`}
             >
-              <span>📊 แดชบอร์ดผู้บริหาร</span>
+              <span>📊</span>
+              <span className="hidden sm:inline">แดชบอร์ดผู้บริหาร</span>
+              <span className="sm:hidden">แดชบอร์ด</span>
             </button>
           )}
 
@@ -121,13 +125,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             type="button"
             onClick={() => onSelectTab('history')}
-            className={`px-3.5 sm:px-4 py-2.5 text-sm sm:text-base font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-base font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
               currentTab === 'history'
                 ? 'bg-white text-red-800 shadow-md ring-2 ring-red-300'
                 : 'text-red-100 hover:text-white hover:bg-red-700/80 bg-red-900/30 border border-transparent hover:border-red-700/50'
             }`}
           >
-            <span>📋 ทะเบียนประวัติเช็ค</span>
+            <span>📋</span>
+            <span className="hidden sm:inline">ทะเบียนประวัติเช็ค</span>
+            <span className="sm:hidden">ทะเบียนเช็ค</span>
             {pendingCount > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-xs font-black ${currentTab === 'history' ? 'bg-red-700 text-white' : 'bg-white text-red-800'}`}>
                 {pendingCount}
@@ -140,31 +146,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               type="button"
               onClick={() => onSelectTab('templates')}
-              className={`px-3.5 sm:px-4 py-2.5 text-sm sm:text-base font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-base font-bold rounded-xl transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 currentTab === 'templates'
                   ? 'bg-white text-red-800 shadow-md ring-2 ring-red-300'
                   : 'text-red-100 hover:text-white hover:bg-red-700/80 bg-red-900/30 border border-transparent hover:border-red-700/50'
               }`}
             >
-              <span>⚙️ ตั้งค่าแม่แบบพิมพ์ (Templates)</span>
+              <span>⚙️</span>
+              <span className="hidden sm:inline">ตั้งค่าแม่แบบพิมพ์</span>
+              <span className="sm:hidden">แม่แบบ</span>
             </button>
           )}
         </nav>
 
         {/* Zone 3: Account info, Font Switcher, User Management button & Logout */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Font Switcher Dropdown */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Font Switcher Dropdown (Icon-only with tooltip) */}
           <div className="relative" ref={fontMenuRef}>
             <button
               type="button"
               onClick={() => setShowFontMenu(!showFontMenu)}
-              title="เปลี่ยนรูปแบบตัวอักษรของระบบ (Font)"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-bold text-white hover:text-red-100 bg-red-900/60 hover:bg-red-900 border border-red-700/80 rounded-xl transition-all cursor-pointer shadow-xs"
+              title={`เปลี่ยนฟอนต์ระบบ (ปัจจุบัน: ${currentFont === 'prompt' ? 'Prompt' : currentFont === 'noto' ? 'Noto' : currentFont === 'ibm' ? 'IBM Plex' : 'Sarabun'})`}
+              className="p-2 sm:px-2.5 sm:py-2 text-white hover:text-red-100 bg-red-900/60 hover:bg-red-900 border border-red-700/80 rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1"
             >
-              <Type className="w-3.5 h-3.5 text-red-200" />
-              <span className="hidden md:inline text-[11px]">
-                ฟอนต์: {currentFont === 'prompt' ? 'Prompt' : currentFont === 'noto' ? 'Noto' : currentFont === 'ibm' ? 'IBM Plex' : 'Sarabun'}
-              </span>
+              <Type className="w-4 h-4 text-red-200" />
             </button>
 
             {showFontMenu && (
@@ -196,18 +201,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Member Management button (Admin Only) */}
+          {/* Member Management button (Admin Only - Icon-only with tooltip) */}
           {isAdmin && (
             <button
               type="button"
               onClick={onOpenUserManagement}
-              title="จัดการและลงทะเบียนสมาชิกผู้ใช้งานในระบบ (เฉพาะ Admin)"
-              className="flex items-center gap-1.5 px-3 py-2 text-xs sm:text-sm font-bold text-white hover:text-red-100 bg-red-900/60 hover:bg-red-900 border border-red-700/80 rounded-xl transition-all cursor-pointer shadow-xs"
+              title="จัดการและลงทะเบียนสมาชิกผู้ใช้งานในระบบ (Admin)"
+              className="p-2 sm:px-2.5 sm:py-2 text-white hover:text-red-100 bg-red-900/60 hover:bg-red-900 border border-red-700/80 rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
             >
               <Users className="w-4 h-4 text-red-200" />
-              <span className="hidden md:inline">จัดการผู้ใช้</span>
               {userCount > 0 && (
-                <span className="px-1.5 py-0.2 bg-white text-red-800 rounded-full text-[11px] font-black">
+                <span className="px-1.5 py-0.2 bg-white text-red-800 rounded-full text-[10px] font-black">
                   {userCount}
                 </span>
               )}
@@ -230,14 +234,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </div>
 
+          {/* Logout button (Icon-only with tooltip) */}
           <button
             type="button"
             onClick={onLogout}
             title="ออกจากระบบ"
-            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs sm:text-sm font-bold text-white hover:text-red-100 bg-red-900/80 hover:bg-red-950 border border-red-700 hover:border-red-600 rounded-xl transition-colors cursor-pointer shadow-xs"
+            className="p-2 sm:px-3 sm:py-2 text-white hover:text-red-100 bg-red-900/80 hover:bg-red-950 border border-red-700 hover:border-red-600 rounded-xl transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
           >
             <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">ออกจากระบบ</span>
           </button>
         </div>
 

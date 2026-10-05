@@ -4,7 +4,6 @@ import { StorageService } from '../utils/storage';
 import { InteractiveChequeCanvas, EditableFieldKey } from './InteractiveChequeCanvas';
 import { AddTemplateModal } from './AddTemplateModal';
 import { ActualSizeChequeModal } from './ActualSizeChequeModal';
-import { PrinterFeedGuide, FEED_DIRECTION_LABELS } from './PrinterFeedGuide';
 import {
   Sliders,
   Check,
@@ -250,22 +249,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...templates,
       [selectedBank]: updated,
     });
-  };
-
-  const handleUpdateFeedDirection = (direction: FeedDirection) => {
-    const updated: BankTemplateConfig = {
-      ...currentBankConfig,
-      feedDirection: direction,
-    };
-    StorageService.saveTemplate(updated, currentUser);
-    setTemplates({
-      ...templates,
-      [selectedBank]: updated,
-    });
-    const label = FEED_DIRECTION_LABELS[direction]?.label || direction;
-    setSaveSuccessMsg(`บันทึกทิศทางการป้อนเช็คเป็น "${label}" สำเร็จแล้ว`);
-    setTimeout(() => setSaveSuccessMsg(null), 3500);
-    onRefreshData();
   };
 
   const handleUpdateFontFamily = (fontFamily: string) => {
@@ -631,7 +614,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   onChange={(e) => handleToggleHideDate(e.target.checked)}
                   className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-slate-300"
                 />
-                <span>ซ่อนวันที่บนเช็ค (ไม่พิมพ์วันที่)</span>
+                <span>ซ่อนวันที่ออกเช็ค (ไม่พิมพ์วันที่)</span>
               </label>
               <span className="text-[10px] text-slate-500 block mt-0.5">
                 {currentBankConfig.hideDateDefault ? '✓ เปิดซ่อนวันที่: จะไม่ถูกพิมพ์ลงบนเช็ค' : 'แสดงวันที่ตามปกติ'}
@@ -1201,49 +1184,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <span>บันทึกการตั้งค่าพิกัด {selectedBank}</span>
           </button>
         </div>
-      </div>
-
-      {/* 3. Printer Feed Direction & Feeding Guide (ทิศทางการป้อนเช็คเข้าเครื่องพิมพ์) */}
-      <div className="bg-white border-2 border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">
-              ทิศทางการป้อนเช็คเข้าเครื่องพิมพ์ (Printer Feed Direction)
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              กำหนดทิศทางที่เครื่องพิมพ์ของหน่วยงานดึงกระดาษเช็คเข้าไป เพื่อให้ข้อความพิมพ์ออกมาถูกทิศทาง 100%
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {[
-              { key: 'LANDSCAPE_NORMAL', label: '↔ แนวนอนปกติ (0°)', desc: 'สอดซ้าย/ต้นขั้วเข้าก่อน' },
-              { key: 'LANDSCAPE_FLIPPED', label: '🔄 แนวนอนกลับด้าน (180°)', desc: 'สอดขวา/ยอดเงินเข้าก่อน' },
-              { key: 'PORTRAIT_TOP', label: '⬆ แนวตั้ง (90°)', desc: 'สอดขอบบนเข้าก่อน' },
-              { key: 'PORTRAIT_BOTTOM', label: '⬇ แนวตั้ง (270°)', desc: 'สอดขอบล่างเข้าก่อน' },
-            ].map((opt) => (
-              <button
-                key={opt.key}
-                type="button"
-                onClick={() => handleUpdateFeedDirection(opt.key as FeedDirection)}
-                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer text-left ${
-                  (currentBankConfig.feedDirection || 'LANDSCAPE_NORMAL') === opt.key
-                    ? 'bg-red-700 text-white border-red-700 shadow-sm ring-2 ring-red-300'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-300'
-                }`}
-              >
-                <div>{opt.label}</div>
-                <div className="text-[10px] font-normal opacity-85">{opt.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <PrinterFeedGuide
-          bankType={selectedBank}
-          direction={currentBankConfig.feedDirection || 'LANDSCAPE_NORMAL'}
-          onChangeDirection={handleUpdateFeedDirection}
-        />
       </div>
 
       {/* ADD / CREATE CUSTOM CHEQUE TEMPLATE MODAL */}

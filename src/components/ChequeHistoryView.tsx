@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { BankType, Cheque, User } from '../types';
 import { StorageService } from '../utils/storage';
-import { formatThaiDate, formatThaiDateTime } from '../utils/dateUtils';
+import { formatThaiDate, formatThaiDateTime, getThaiFiscalYear } from '../utils/dateUtils';
 import { ChequeDetailModal } from './ChequeDetailModal';
 import {
   Printer,
@@ -16,6 +16,7 @@ import {
   Filter,
   Trash2,
   Eye,
+  Copy,
   User as UserIcon,
 } from 'lucide-react';
 
@@ -37,8 +38,22 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
   onDuplicateAsNewCheque,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [fiscalYearFilter, setFiscalYearFilter] = useState<number | 'ALL'>('ALL');
   const [bankFilter, setBankFilter] = useState<'ALL' | BankType>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'ISSUED' | 'VOID'>(initialFilter);
+
+  // Available fiscal years
+  const availableFiscalYears = useMemo(() => {
+    const years = new Set<number>();
+    const currentFY = getThaiFiscalYear();
+    years.add(currentFY);
+    years.add(currentFY - 1);
+    years.add(currentFY + 1);
+    cheques.forEach((c) => {
+      years.add(c.fiscalYear || getThaiFiscalYear(c.chequeDate || c.stubDate, c.dikaNumber));
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [cheques]);
 
   // Cheque detail popup modal state (คลิกที่แถวหรือปุ่มดูข้อมูลเพื่อเปิด popup)
   const [selectedChequeForDetail, setSelectedChequeForDetail] = useState<Cheque | null>(null);
@@ -51,33 +66,54 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
 
   const isAdmin = currentUser.role === 'ADMIN';
 
-  // Counts
-  const totalPendingCount = cheques.filter((c) => c.status !== 'VOID' && c.printCount === 0).length;
-  const totalIssuedCount = cheques.filter((c) => c.status !== 'VOID' && c.printCount > 0).length;
-  const totalVoidCount = cheques.filter((c) => c.status === 'VOID').length;
-
   // Filtered cheques
-  const filteredCheques = cheques.filter((item) => {
-    // 1. Search term
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase().trim();
-      const matchPayee = item.chequePayeeName.toLowerCase().includes(term);
-      const matchDika = (item.dikaNumber || '').toLowerCase().includes(term);
-      const matchChequeNo = (item.chequeNumber || '').toLowerCase().includes(term);
-      const matchItems = item.items?.some((it) => it.description.toLowerCase().includes(term));
-      if (!matchPayee && !matchDika && !matchChequeNo && !matchItems) return false;
-    }
+  const filteredCheques = useMemo(() => {
+    return cheques.filter((item) => {
+      // 0. Fiscal Year filter
+      if (fiscalYearFilter !== 'ALL') {
+        const itemFY = item.fiscalYear || getThaiFiscalYear(item.chequeDate || item.stubDate, item.dikaNumber);
+        if (itemFY !== fiscalYearFilter) return false;
+      }
 
-    // 2. Bank filter
-    if (bankFilter !== 'ALL' && item.lastBankType !== bankFilter) return false;
+      // 1. Search term
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase().trim();
+        const itemFY = (item.fiscalYear || getThaiFiscalYear(item.chequeDate || item.stubDate, item.dikaNumber)).toString();
+        const matchPayee = item.chequePayeeName.toLowerCase().includes(term);
+        const matchDika = (item.dikaNumber || '').toLowerCase().includes(term);
+        const matchChequeNo = (item.chequeNumber || '').toLowerCase().includes(term);
+        const matchItems = item.items?.some((it) => it.description.toLowerCase().includes(term));
+        const matchFY = itemFY.includes(term) || `ปี ${itemFY}`.includes(term) || `ปีงบ ${itemFY}`.includes(term) || `ปีงบประมาณ ${itemFY}`.includes(term);
+        if (!matchPayee && !matchDika && !matchChequeNo && !matchItems && !matchFY) return false;
+      }
 
-    // 3. Status filter
-    if (statusFilter === 'VOID' && item.status !== 'VOID') return false;
-    if (statusFilter === 'ISSUED' && (item.status === 'VOID' || item.printCount === 0)) return false;
-    if (statusFilter === 'PENDING' && (item.status === 'VOID' || item.printCount > 0)) return false;
+      // 2. Bank filter
+      if (bankFilter !== 'ALL' && item.lastBankType !== bankFilter) return false;
 
-    return true;
-  });
+      // 3. Status filter
+      if (statusFilter === 'VOID' && item.status !== 'VOID') return false;
+      if (statusFilter === 'ISSUED' && (item.status === 'VOID' || item.printCount === 0)) return false;
+      if (statusFilter === 'PENDING' && (item.status === 'VOID' || item.printCount > 0)) return false;
+
+      return true;
+    });
+  }, [cheques, fiscalYearFilter, searchTerm, bankFilter, statusFilter]);
+
+  // Counts based on selected fiscal year
+  const totalPendingCount = cheques.filter((c) => {
+    if (fiscalYearFilter !== 'ALL' && (c.fiscalYear || getThaiFiscalYear(c.chequeDate || c.stubDate, c.dikaNumber)) !== fiscalYearFilter) return false;
+    return c.status !== 'VOID' && c.printCount === 0;
+  }).length;
+
+  const totalIssuedCount = cheques.filter((c) => {
+    if (fiscalYearFilter !== 'ALL' && (c.fiscalYear || getThaiFiscalYear(c.chequeDate || c.stubDate, c.dikaNumber)) !== fiscalYearFilter) return false;
+    return c.status !== 'VOID' && c.printCount > 0;
+  }).length;
+
+  const totalVoidCount = cheques.filter((c) => {
+    if (fiscalYearFilter !== 'ALL' && (c.fiscalYear || getThaiFiscalYear(c.chequeDate || c.stubDate, c.dikaNumber)) !== fiscalYearFilter) return false;
+    return c.status === 'VOID';
+  }).length;
 
   // Calculate totals
   const totalAmount = filteredCheques.reduce((sum, c) => sum + (c.netPaidAmount || c.totalAmount), 0);
@@ -110,7 +146,8 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
   const handleExportCSV = () => {
     const headers = [
       'ลำดับ',
-      'วันที่บนเช็ค',
+      'ปีงบประมาณ',
+      'วันที่ออกเช็ค',
       'เลขที่ฎีกา',
       'เลขที่เช็ค',
       'สั่งจ่ายให้แก่',
@@ -130,6 +167,7 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
 
     const rows = filteredCheques.map((item, idx) => [
       idx + 1,
+      getThaiFiscalYear(item.chequeDate || item.stubDate, item.dikaNumber),
       item.chequeDate || item.stubDate,
       `"${item.dikaNumber}"`,
       `"${item.chequeNumber || '-'}"`,
@@ -138,7 +176,7 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
       item.totalAmount.toFixed(2),
       (item.withholdingTaxAmount || 0).toFixed(2),
       (item.netPaidAmount || item.totalAmount).toFixed(2),
-      `"=${item.totalAmountThaiText}="`,
+      `"${item.totalAmountThaiText}"`,
       `"${item.lastBankType || '-'}"`,
       item.status === 'VOID' ? 'ยกเลิก' : item.printCount > 0 ? 'พิมพ์แล้ว' : 'รอพิมพ์',
       item.printCount,
@@ -180,10 +218,12 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
         <button
           type="button"
           onClick={handleExportCSV}
-          className="h-11 px-5 bg-white hover:bg-red-50 text-red-800 border-2 border-red-300 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+          className="h-11 px-4 bg-white hover:bg-red-50 text-red-800 border-2 border-red-300 rounded-xl font-bold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs w-full sm:w-auto"
+          title="ส่งออกไฟล์ Excel / CSV"
         >
-          <Download className="w-4 h-4 text-red-700" />
-          <span>ส่งออกไฟล์ Excel / CSV</span>
+          <Download className="w-4.5 h-4.5 text-red-700 shrink-0" />
+          <span className="hidden sm:inline">ส่งออกไฟล์ Excel / CSV</span>
+          <span className="sm:hidden">ส่งออก Excel</span>
         </button>
       </div>
 
@@ -196,26 +236,44 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
       )}
 
       {/* Search & Fast Filters Bar */}
-      <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         {/* Search Input */}
-        <div className="relative flex-1 min-w-[280px]">
+        <div className="relative flex-1 min-w-[240px] sm:min-w-[280px]">
           <Search className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="🔍 ค้นหา: ชื่อผู้รับเงิน, เลขที่ฎีกา, เลขที่เช็ค, หรือรายการ..."
-            className="w-full h-12 pl-11 pr-4 text-base font-semibold text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:outline-none transition-all"
+            placeholder="🔍 ค้นหา: ชื่อผู้รับเงิน, ฎีกา, เช็ค..."
+            className="w-full h-11 sm:h-12 pl-11 pr-4 text-sm sm:text-base font-semibold text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:outline-none transition-all"
           />
           {searchTerm && (
             <button
               type="button"
               onClick={() => setSearchTerm('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           )}
+        </div>
+
+        {/* Fiscal Year Filter Selector (ระบบรองรับการใช้งานข้ามปีงบประมาณ) */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold text-slate-600 mr-1 hidden sm:inline">ปีงบ:</span>
+          <select
+            value={fiscalYearFilter}
+            onChange={(e) => setFiscalYearFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+            className="h-10 sm:h-11 px-3 text-xs sm:text-sm font-bold text-slate-800 bg-slate-50 hover:bg-white border border-slate-300 rounded-xl focus:border-red-600 focus:outline-none cursor-pointer shadow-2xs transition-all"
+            title="เลือกปีงบประมาณที่ต้องการตรวจสอบหรือข้ามปีงบประมาณ"
+          >
+            <option value="ALL">🏛️ ทุกปีงบประมาณ</option>
+            {availableFiscalYears.map((fy) => (
+              <option key={fy} value={fy}>
+                🏛️ ปีงบประมาณ {fy}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Bank Filter Buttons */}
@@ -232,7 +290,7 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                 key={b.id}
                 type="button"
                 onClick={() => setBankFilter(b.id as any)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                   bankFilter === b.id
                     ? 'bg-red-700 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -251,7 +309,7 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('ALL')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 statusFilter === 'ALL'
                   ? 'bg-red-700 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -264,7 +322,7 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('PENDING')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
                 statusFilter === 'PENDING'
                   ? 'bg-amber-700 text-white shadow-xs'
                   : 'text-amber-800 hover:bg-amber-100/70'
@@ -282,7 +340,7 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('ISSUED')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                 statusFilter === 'ISSUED'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-emerald-800 hover:bg-emerald-100/70'
@@ -320,19 +378,182 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto w-full">
+        {/* Mobile View: Touch-Friendly Cheque Cards (< 768px) */}
+        <div className="md:hidden divide-y divide-slate-200">
+          {filteredCheques.length === 0 ? (
+            <div className="py-10 text-center text-slate-400 p-4">
+              <FileSpreadsheet className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+              <p className="text-sm font-bold text-slate-600">ไม่พบรายการออกเช็คตามที่ค้นหา</p>
+            </div>
+          ) : (
+            filteredCheques.map((item, index) => {
+              const isVoid = item.status === 'VOID';
+              const isPending = !isVoid && item.printCount === 0;
+              const chqFY = getThaiFiscalYear(item.chequeDate || item.stubDate, item.dikaNumber);
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => setSelectedChequeForDetail(item)}
+                  className={`p-4 transition-colors cursor-pointer space-y-2.5 ${
+                    isVoid ? 'bg-slate-100/60 opacity-75' : 'bg-white hover:bg-red-50/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-black text-slate-400">#{index + 1}</span>
+                      <span className="text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded-md">
+                        ฎีกา {item.dikaNumber}
+                      </span>
+                      <span className="text-[11px] font-bold text-red-800 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                        ปี {chqFY}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                        {item.lastBankType || 'KTB'}
+                      </span>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div>
+                      {isVoid ? (
+                        <span className="px-2 py-0.5 text-xs font-black bg-slate-200 text-slate-700 rounded-full">
+                          ยกเลิก
+                        </span>
+                      ) : isPending ? (
+                        <span className="px-2.5 py-0.5 text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 rounded-full">
+                          ⏳ รอพิมพ์
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-xs font-black bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-full flex items-center gap-1">
+                          <Printer className="w-3 h-3 text-emerald-700" />
+                          <span>{item.printCount} ครั้ง</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Payee Name & Description */}
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 leading-snug">
+                      {item.chequePayeeName}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium line-clamp-1 mt-0.5">
+                      {(item.items || []).map((it) => it.description).join(', ') || '-'}
+                    </p>
+                  </div>
+
+                  {/* Amount & Date */}
+                  <div className="flex items-baseline justify-between pt-1">
+                    <div className="text-xs text-slate-500">
+                      {formatThaiDate(item.chequeDate || item.stubDate)}
+                    </div>
+                    <div className="text-right">
+                      <span className="text-base font-black text-red-700 tabular-nums">
+                        {(item.netPaidAmount || item.totalAmount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                      </span>
+                      <span className="text-xs font-bold text-slate-700 ml-1">บาท</span>
+                    </div>
+                  </div>
+
+                  {/* Mobile Actions Toolbar */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                      <UserIcon className="w-3 h-3 text-red-700" />
+                      <span>{item.lastPrintedBy || item.createdBy || 'ผู้ดูแลระบบ'}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedChequeForDetail(item);
+                        }}
+                        className="p-2 bg-slate-100 text-slate-700 hover:text-red-800 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                        title="ดูรายละเอียดข้อมูลเช็ค"
+                      >
+                        <Eye className="w-4 h-4 text-red-700" />
+                      </button>
+
+                      {!isVoid && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenPrintModal(item);
+                          }}
+                          className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                            isPending
+                              ? 'bg-red-700 text-white hover:bg-red-800 shadow-xs'
+                              : 'bg-slate-700 text-white hover:bg-slate-800'
+                          }`}
+                          title={isPending ? 'สั่งพิมพ์เช็ค' : `สั่งพิมพ์ซ้ำ (${item.printCount + 1})`}
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      {!isVoid && onDuplicateAsNewCheque && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDuplicateAsNewCheque(item);
+                          }}
+                          className="p-2 bg-red-50 text-red-800 border border-red-200 rounded-lg hover:bg-red-100 transition-colors cursor-pointer"
+                          title="ดึงข้อมูลออกเช็คใหม่"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      {!isVoid && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVoidModalCheque(item);
+                          }}
+                          className="p-2 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title="ยกเลิกเช็ค"
+                        >
+                          <Ban className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteModalCheque(item);
+                          }}
+                          className="p-2 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title="ลบรายการเช็ค"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Full Data Table (Hidden on Mobile < 768px) */}
+        <div className="hidden md:block overflow-x-auto w-full">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-100/90 text-slate-800 font-bold border-b-2 border-slate-200 text-xs sm:text-sm">
               <tr>
                 <th className="py-3.5 px-3 text-center w-12">ลำดับ</th>
-                <th className="py-3.5 px-3 whitespace-nowrap">วันที่บนเช็ค</th>
+                <th className="py-3.5 px-3 whitespace-nowrap">วันที่ออกเช็ค</th>
                 <th className="py-3.5 px-3 whitespace-nowrap">เลขที่ฎีกา / เช็ค</th>
                 <th className="py-3.5 px-4">สั่งจ่ายให้แก่ (ผู้รับเงิน)</th>
                 <th className="py-3.5 px-3">รายการฎีกา</th>
                 <th className="py-3.5 px-4 text-right whitespace-nowrap">ยอดสั่งจ่ายสุทธิ</th>
                 <th className="py-3.5 px-3 text-center whitespace-nowrap">ธนาคาร</th>
-                <th className="py-3.5 px-3.5 whitespace-nowrap text-red-900 bg-red-50/70 font-black border-b-2 border-red-300">
-                  📜 ประวัติการพิมพ์ (ใครพิมพ์ / กี่ครั้ง / เมื่อไร)
+                <th className="py-3.5 px-3.5 whitespace-nowrap text-slate-800 font-bold">
+                  สถานะการพิมพ์
                 </th>
                 <th className="py-3.5 px-3 text-center whitespace-nowrap w-44">คำสั่ง</th>
               </tr>
@@ -428,17 +649,28 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
 
                       {/* 7. Bank */}
                       <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                        <span className="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 text-slate-800 border border-slate-300">
+                        <span className={`px-2.5 py-1 text-xs font-black rounded-lg border shadow-2xs ${
+                          item.lastBankType === 'KTB'
+                            ? 'bg-sky-50 text-sky-800 border-sky-300'
+                            : item.lastBankType === 'BAAC'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : item.lastBankType === 'GSB'
+                            ? 'bg-pink-50 text-pink-800 border-pink-300'
+                            : 'bg-slate-100 text-slate-800 border-slate-300'
+                        }`}>
                           {item.lastBankType || 'KTB'}
                         </span>
                       </td>
 
-                      {/* 8. Print History & Status (ใครพิมพ์ / จำนวนครั้งที่พิมพ์ / พิมพ์เมื่อไร) */}
+                      {/* 8. Print History & Status with Pulsing Glow Dot */}
                       <td className="py-3 px-3.5 text-left whitespace-nowrap bg-red-50/20">
                         {isVoid ? (
                           <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                              <Ban className="w-3.5 h-3.5 text-slate-500" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-800 border border-rose-300">
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                              </span>
                               <span>ยกเลิก (Void)</span>
                             </span>
                             <div className="text-xs text-slate-700 font-semibold">
@@ -452,9 +684,12 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                           </div>
                         ) : isPending ? (
                           <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                              <Clock className="w-3.5 h-3.5 text-amber-700" />
-                              <span>ยังไม่เคยพิมพ์ (รอพิมพ์)</span>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-300">
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                              </span>
+                              <span>รอสั่งพิมพ์</span>
                             </span>
                             <div className="text-xs text-slate-700 font-medium">
                               สร้างโดย: <strong className="text-slate-900">{item.createdBy || '-'}</strong>
@@ -468,8 +703,11 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                         ) : (
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-950 border border-emerald-300 shadow-2xs">
-                                <Printer className="w-3.5 h-3.5 text-emerald-700" />
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-50 text-emerald-950 border border-emerald-300 shadow-2xs">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
                                 <span>พิมพ์แล้ว {item.printCount} ครั้ง</span>
                               </span>
                             </div>
@@ -481,16 +719,6 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                               <Clock className="w-3 h-3 text-slate-400 shrink-0" />
                               <span>เมื่อ: {item.lastPrintedAt ? formatThaiDateTime(item.lastPrintedAt) : formatThaiDate(item.chequeDate || item.stubDate)}</span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedChequeForDetail(item);
-                              }}
-                              className="text-[11px] font-bold text-red-700 hover:text-red-900 hover:underline flex items-center gap-0.5 cursor-pointer mt-0.5"
-                            >
-                              <span>📜 ดูประวัติการพิมพ์ฉบับเต็ม</span>
-                            </button>
                           </div>
                         )}
                       </td>
@@ -506,11 +734,10 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                                 e.stopPropagation();
                                 setSelectedChequeForDetail(item);
                               }}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-800 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-slate-200 hover:border-red-200"
+                              className="p-2 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-800 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-red-200"
                               title="คลิกดูรายละเอียดเช็คฉบับเต็ม"
                             >
-                              <Eye className="w-3.5 h-3.5 text-red-700" />
-                              <span className="hidden sm:inline">ดูข้อมูล</span>
+                              <Eye className="w-4 h-4 text-red-700" />
                             </button>
 
                             {/* If pending print, show primary Red button */}
@@ -521,11 +748,10 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                                   e.stopPropagation();
                                   onOpenPrintModal(item);
                                 }}
-                                className="px-3.5 py-1.5 bg-red-700 hover:bg-red-800 text-white rounded-lg text-xs font-black shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                                className="p-2 bg-red-700 hover:bg-red-800 text-white rounded-lg shadow-xs transition-colors cursor-pointer ring-1 ring-red-300"
                                 title="สั่งพิมพ์เช็คฉบับนี้"
                               >
-                                <Printer className="w-3.5 h-3.5" />
-                                <span>สั่งพิมพ์เลย</span>
+                                <Printer className="w-4 h-4" />
                               </button>
                             ) : (
                               <div className="flex items-center gap-1">
@@ -536,11 +762,10 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                                     e.stopPropagation();
                                     onOpenPrintModal(item);
                                   }}
-                                  className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-bold shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
-                                  title="สั่งพิมพ์เช็คฉบับนี้อีกครั้ง"
+                                  className="p-2 bg-slate-700 hover:bg-slate-800 text-white rounded-lg shadow-xs transition-colors cursor-pointer"
+                                  title={`สั่งพิมพ์เช็คซ้ำ (${item.lastBankType || 'KTB'} ครั้งที่ ${item.printCount + 1})`}
                                 >
-                                  <Printer className="w-3.5 h-3.5" />
-                                  <span>พิมพ์ซ้ำ</span>
+                                  <Printer className="w-4 h-4" />
                                 </button>
 
                                 {/* Issue new cheque from this one (not a reprint) */}
@@ -551,10 +776,10 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                                       e.stopPropagation();
                                       onDuplicateAsNewCheque(item);
                                     }}
-                                    className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border border-red-300 rounded-lg text-xs font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
-                                    title="ดึงข้อมูลเจ้านี้มาออกเช็คใหม่ในรอบเดือนนี้ (ไม่ถือว่าเป็นการพิมพ์ซ้ำ)"
+                                    className="p-2 bg-red-50 hover:bg-red-100 text-red-800 border border-red-300 rounded-lg transition-all shadow-2xs cursor-pointer"
+                                    title="ดึงข้อมูลเจ้านี้มาออกเช็คใหม่ในรอบเดือนนี้"
                                   >
-                                    <span>📋 ออกเช็คใหม่</span>
+                                    <Copy className="w-4 h-4" />
                                   </button>
                                 )}
                               </div>
@@ -567,11 +792,10 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                                 e.stopPropagation();
                                 setVoidModalCheque(item);
                               }}
-                              className="px-2 py-1.5 text-slate-500 hover:text-red-700 hover:bg-red-50 rounded-lg text-xs font-semibold transition-colors cursor-pointer border border-transparent hover:border-red-200"
+                              className="p-2 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-red-200"
                               title="ยกเลิกเช็คฉบับนี้ (เช็คเสีย/พิมพ์ผิด)"
                             >
-                              <Ban className="w-3.5 h-3.5" />
-                              <span>ยกเลิก</span>
+                              <Ban className="w-4 h-4" />
                             </button>
 
                             {/* Delete button (Admin Only) */}
@@ -582,10 +806,10 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                                   e.stopPropagation();
                                   setDeleteModalCheque(item);
                                 }}
-                                className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                className="p-2 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                 title="ลบรายการเช็คนี้ออกจากระบบ (เฉพาะ Admin)"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             )}
                           </div>
@@ -598,11 +822,10 @@ export const ChequeHistoryView: React.FC<ChequeHistoryViewProps> = ({
                                 e.stopPropagation();
                                 setSelectedChequeForDetail(item);
                               }}
-                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
                               title="คลิกดูรายละเอียดเช็คที่ยกเลิก"
                             >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>ดูข้อมูล</span>
+                              <Eye className="w-4 h-4" />
                             </button>
                             <span className="text-xs text-slate-400">
                               {item.voidReason || 'ยกเลิกแล้ว'}

@@ -7,7 +7,6 @@ import { formatThaiDate, formatThaiDateTime, formatChequePrintDate, getTodayISOD
 import { ChequeBackground } from './ChequeBackground';
 import { ZoomController } from './ZoomController';
 import { AddTemplateModal } from './AddTemplateModal';
-import { PrinterFeedGuide, FEED_DIRECTION_LABELS } from './PrinterFeedGuide';
 import {
   Printer,
   X,
@@ -456,10 +455,10 @@ export const ChequePrintModal: React.FC<ChequePrintModalProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenHistory(cheque)}
-                      className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="p-2 text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                      title="ดูประวัติการพิมพ์"
                     >
-                      <History className="w-3.5 h-3.5" />
-                      <span>ดูประวัติทั้งหมด</span>
+                      <History className="w-4 h-4 text-slate-600" />
                     </button>
                     
                     <button
@@ -659,7 +658,7 @@ export const ChequePrintModal: React.FC<ChequePrintModalProps> = ({
                       onChange={(e) => setPrintDate(e.target.checked)}
                       className="w-4 h-4 rounded text-red-600 focus:ring-red-500 border-slate-300"
                     />
-                    <span>พิมพ์วันที่บนเช็ค:</span>
+                    <span>พิมพ์วันที่ออกเช็ค:</span>
                   </label>
                   {printDate ? (
                     <input
@@ -771,38 +770,12 @@ export const ChequePrintModal: React.FC<ChequePrintModalProps> = ({
             </div>
           </div>
 
-          {/* Visual Printer Feeding Guide with adjustable direction */}
-          <PrinterFeedGuide
-            bankType={selectedBank}
-            direction={feedDirection}
-            onChangeDirection={(newDir) => {
-              setFeedDirection(newDir);
-              const updated = {
-                ...currentTemplate,
-                feedDirection: newDir,
-              };
-              StorageService.saveTemplate(updated, currentUser);
-              setTemplates({
-                ...templates,
-                [selectedBank]: updated,
-              });
-              if (newDir === 'PORTRAIT_TOP' || newDir === 'PORTRAIT_BOTTOM') {
-                setRotatePreviewMatchingFeed(true);
-              }
-            }}
-            compact={true}
-          />
-
           {/* STEP 4: CHEQUE PREVIEW & PRINT ZONE */}
           <div className="flex flex-col items-center justify-center p-4 bg-slate-200/60 rounded-xl overflow-x-auto border border-slate-300">
             <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 mb-3">
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-700">
                 <span>
                   ขนาดเช็ค: <strong>{currentTemplate.widthMm} × {currentTemplate.heightMm} มม.</strong> ({currentTemplate.bankNameThai})
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-white font-bold text-[10px] flex items-center gap-1 shadow-xs">
-                  <span>{FEED_DIRECTION_LABELS[feedDirection]?.icon}</span>
-                  <span>{FEED_DIRECTION_LABELS[feedDirection]?.label}</span>
                 </span>
               </div>
 
@@ -816,13 +789,11 @@ export const ChequePrintModal: React.FC<ChequePrintModalProps> = ({
                       ? 'bg-red-700 text-white border-red-800 ring-2 ring-red-300'
                       : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
                   }`}
-                  title="หมุนมุมมองตัวอย่างเช็คตามทิศทางป้อนกระดาษของเครื่องพิมพ์"
+                  title="หมุนมุมมองตัวอย่างเช็ค 90°"
                 >
                   <RotateCw className="w-3.5 h-3.5" />
                   <span>
-                    {rotatePreviewMatchingFeed
-                      ? `หมุนตามเครื่อง (${FEED_DIRECTION_LABELS[feedDirection]?.rotationDeg || 0}°)`
-                      : 'ดูแนวนอนปกติ'}
+                    {rotatePreviewMatchingFeed ? 'หมุน 90°' : 'แนวนอนปกติ'}
                   </span>
                 </button>
 
@@ -835,8 +806,7 @@ export const ChequePrintModal: React.FC<ChequePrintModalProps> = ({
 
             {/* Cheque Canvas Container with Zoom & Orientation Transform */}
             {(() => {
-              const rotationDeg = rotatePreviewMatchingFeed ? (FEED_DIRECTION_LABELS[feedDirection]?.rotationDeg || 0) : 0;
-              const isRotated90or270 = rotationDeg === 90 || rotationDeg === 270;
+              const isRotated = rotatePreviewMatchingFeed;
 
               return (
                 <div className="overflow-auto max-w-full p-3 flex items-center justify-center w-full min-h-[140px]">
@@ -850,8 +820,8 @@ export const ChequePrintModal: React.FC<ChequePrintModalProps> = ({
                     {/* Bounding box wrapper to hold rotated dimensions without overflow clipping */}
                     <div
                       style={{
-                        width: isRotated90or270 ? `${currentTemplate.heightMm}mm` : `${currentTemplate.widthMm}mm`,
-                        height: isRotated90or270 ? `${currentTemplate.widthMm}mm` : `${currentTemplate.heightMm}mm`,
+                        width: isRotated ? `${currentTemplate.heightMm}mm` : `${currentTemplate.widthMm}mm`,
+                        height: isRotated ? `${currentTemplate.widthMm}mm` : `${currentTemplate.heightMm}mm`,
                         position: 'relative',
                         transition: 'all 0.3s ease',
                       }}
@@ -866,16 +836,10 @@ export const ChequePrintModal: React.FC<ChequePrintModalProps> = ({
                           boxSizing: 'border-box',
                           fontFamily: currentTemplate.fontFamily || "'Sarabun', 'TH Sarabun New', 'Cordia New', sans-serif",
                           transformOrigin: 'top left',
-                          transform: rotationDeg === 90
-                            ? 'rotate(90deg) translateY(-100%)'
-                            : rotationDeg === 270
-                            ? 'rotate(270deg) translateX(-100%)'
-                            : rotationDeg === 180
-                            ? 'rotate(180deg) translate(-100%, -100%)'
-                            : 'none',
+                          transform: isRotated ? 'rotate(90deg) translateY(-100%)' : 'none',
                           transition: 'transform 0.3s ease',
                         }}
-                        className={`bg-white border border-slate-300 shadow-md relative overflow-hidden text-black select-none feed-direction-${feedDirection.toLowerCase().replace('_', '-')}`}
+                        className="bg-white border border-slate-300 shadow-md relative overflow-hidden text-black select-none"
                       >
               
               {/* Direction Ribbon (Screen preview only, strictly hidden in print) */}

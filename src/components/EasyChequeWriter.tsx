@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { BankType, Cheque, ChequeItem, User } from '../types';
 import { StorageService } from '../utils/storage';
-import { formatThaiDate, getTodayISODate } from '../utils/dateUtils';
+import { formatThaiDate, getTodayISODate, getThaiFiscalYear } from '../utils/dateUtils';
 import { thaiBahtText } from '../utils/thaiBahtText';
-import { PrinterFeedGuide } from './PrinterFeedGuide';
+import { LiveChequePreview } from './LiveChequePreview';
 import {
   Printer,
   RotateCcw,
@@ -20,6 +20,12 @@ import {
   AlertCircle,
   ExternalLink,
   HelpCircle,
+  History,
+  Copy,
+  Sparkles,
+  Eye,
+  EyeOff,
+  Check,
 } from 'lucide-react';
 
 interface EasyChequeWriterProps {
@@ -85,6 +91,9 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
   const [payeeName, setPayeeName] = useState<string>('');
   const [selectedBank, setSelectedBank] = useState<BankType>('KTB');
 
+  // Computed fiscal year from chequeDate and dikaNumber
+  const computedFiscalYear = getThaiFiscalYear(chequeDate, dikaNumber);
+
   // Source cheque banner when pulled from history (ไม่ถือว่าพิมพ์ซ้ำ)
   const [sourceChequeBanner, setSourceChequeBanner] = useState<string | null>(null);
   const [showHistoryPickerModal, setShowHistoryPickerModal] = useState<boolean>(false);
@@ -124,6 +133,10 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
 
   // Modal after saving without printing
   const [savedPendingCheque, setSavedPendingCheque] = useState<Cheque | null>(null);
+
+  // Live Cheque Preview visibility & quick toast
+  const [showLivePreview, setShowLivePreview] = useState<boolean>(true);
+  const [quickToast, setQuickToast] = useState<string | null>(null);
 
   // Calculate total amounts from all items
   const totalNumericAmount = items.reduce((sum, it) => sum + (it.amount || 0), 0);
@@ -297,6 +310,7 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
       stubPayeeName: payeeName.trim(),
       chequePayeeName: payeeName.trim(),
       dikaNumber: dikaNumber.trim() || undefined,
+      fiscalYear: computedFiscalYear,
       items: finalItems,
       totalAmount: totalNumericAmount,
       totalAmountThaiText: thaiText,
@@ -319,9 +333,9 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
     if (!chequeDate) {
       errors.push({
         id: 'date',
-        field: 'วันที่บนเช็ค',
-        label: 'วันที่สั่งจ่ายบนหน้าเช็ค',
-        message: 'กรุณาระบุวันที่สั่งจ่ายบนหน้าเช็ค',
+        field: 'วันที่ออกเช็ค',
+        label: 'วันที่ออกเช็ค',
+        message: 'กรุณาระบุวันที่ออกเช็ค',
         focusTarget: 'date',
       });
     }
@@ -442,6 +456,18 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
     return code;
   };
 
+  // Keyboard shortcut listener for Ctrl+P / Cmd+P
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        handleInitiateSaveAndPrint();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [payeeName, totalNumericAmount, chequeDate, dikaNumber, chequeNumber, selectedBank]);
+
   return (
     <div className="w-full space-y-6 pb-12 animate-in fade-in">
       {/* Top Banner Notice */}
@@ -498,62 +524,104 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
             {/* KTB */}
             <button
               type="button"
               onClick={() => setSelectedBank('KTB')}
-              className={`p-4 rounded-xl border-2 text-left transition-all cursor-pointer flex items-center gap-3 ${
+              className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer flex items-center gap-3.5 relative overflow-hidden group ${
                 selectedBank === 'KTB'
-                  ? 'border-red-600 bg-red-50/60 shadow-md ring-2 ring-red-200'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
+                  ? 'border-sky-500 bg-gradient-to-br from-sky-600 via-sky-700 to-blue-800 text-white shadow-lg shadow-sky-500/25 ring-2 ring-sky-300 scale-[1.02] -translate-y-0.5'
+                  : 'border-slate-200 bg-white hover:border-sky-300 hover:bg-sky-50/40 text-slate-800 shadow-2xs hover:shadow-xs'
               }`}
             >
-              <div className="w-12 h-12 rounded-xl bg-sky-500 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
-                KTB
+              <div className={`w-13 h-13 rounded-2xl font-black text-base flex flex-col items-center justify-center shrink-0 shadow-md transition-transform group-hover:scale-105 border ${
+                selectedBank === 'KTB'
+                  ? 'bg-white/20 text-white border-white/40 backdrop-blur-xs'
+                  : 'bg-gradient-to-br from-sky-400 to-blue-600 text-white border-sky-300'
+              }`}>
+                <span className="text-sm font-black tracking-tight">KTB</span>
+                <span className="text-[9px] opacity-90 font-medium">กรุงไทย</span>
               </div>
-              <div>
-                <div className="font-extrabold text-base text-slate-900">ธ.กรุงไทย (KTB)</div>
-                <div className="text-xs text-slate-500 font-medium">ขนาดแม่แบบ 241 × 90 มม.</div>
+              <div className="flex-1">
+                <div className={`font-black text-base leading-tight ${selectedBank === 'KTB' ? 'text-white' : 'text-slate-900'}`}>
+                  ธ.กรุงไทย (KTB)
+                </div>
+                <div className={`text-xs mt-0.5 font-medium ${selectedBank === 'KTB' ? 'text-sky-100' : 'text-slate-500'}`}>
+                  แม่แบบ 241 × 90 มม.
+                </div>
               </div>
+              {selectedBank === 'KTB' && (
+                <div className="w-6 h-6 rounded-full bg-white text-sky-700 flex items-center justify-center font-bold text-xs shadow-xs">
+                  ✓
+                </div>
+              )}
             </button>
 
             {/* BAAC */}
             <button
               type="button"
               onClick={() => setSelectedBank('BAAC')}
-              className={`p-4 rounded-xl border-2 text-left transition-all cursor-pointer flex items-center gap-3 ${
+              className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer flex items-center gap-3.5 relative overflow-hidden group ${
                 selectedBank === 'BAAC'
-                  ? 'border-red-600 bg-red-50/60 shadow-md ring-2 ring-red-200'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
+                  ? 'border-emerald-500 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-lg shadow-emerald-500/25 ring-2 ring-emerald-300 scale-[1.02] -translate-y-0.5'
+                  : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40 text-slate-800 shadow-2xs hover:shadow-xs'
               }`}
             >
-              <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
-                BAAC
+              <div className={`w-13 h-13 rounded-2xl font-black text-base flex flex-col items-center justify-center shrink-0 shadow-md transition-transform group-hover:scale-105 border ${
+                selectedBank === 'BAAC'
+                  ? 'bg-white/20 text-white border-white/40 backdrop-blur-xs'
+                  : 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white border-emerald-300'
+              }`}>
+                <span className="text-sm font-black tracking-tight">BAAC</span>
+                <span className="text-[9px] opacity-90 font-medium">ธ.ก.ส.</span>
               </div>
-              <div>
-                <div className="font-extrabold text-base text-slate-900">ธ.ก.ส. (BAAC)</div>
-                <div className="text-xs text-slate-500 font-medium">ขนาดแม่แบบ 235 × 90 มม.</div>
+              <div className="flex-1">
+                <div className={`font-black text-base leading-tight ${selectedBank === 'BAAC' ? 'text-white' : 'text-slate-900'}`}>
+                  ธ.ก.ส. (BAAC)
+                </div>
+                <div className={`text-xs mt-0.5 font-medium ${selectedBank === 'BAAC' ? 'text-emerald-100' : 'text-slate-500'}`}>
+                  แม่แบบ 235 × 90 มม.
+                </div>
               </div>
+              {selectedBank === 'BAAC' && (
+                <div className="w-6 h-6 rounded-full bg-white text-emerald-700 flex items-center justify-center font-bold text-xs shadow-xs">
+                  ✓
+                </div>
+              )}
             </button>
 
             {/* GSB */}
             <button
               type="button"
               onClick={() => setSelectedBank('GSB')}
-              className={`p-4 rounded-xl border-2 text-left transition-all cursor-pointer flex items-center gap-3 ${
+              className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 cursor-pointer flex items-center gap-3.5 relative overflow-hidden group ${
                 selectedBank === 'GSB'
-                  ? 'border-red-600 bg-red-50/60 shadow-md ring-2 ring-red-200'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
+                  ? 'border-pink-500 bg-gradient-to-br from-pink-600 via-rose-600 to-rose-800 text-white shadow-lg shadow-pink-500/25 ring-2 ring-pink-300 scale-[1.02] -translate-y-0.5'
+                  : 'border-slate-200 bg-white hover:border-pink-300 hover:bg-pink-50/40 text-slate-800 shadow-2xs hover:shadow-xs'
               }`}
             >
-              <div className="w-12 h-12 rounded-xl bg-pink-600 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
-                GSB
+              <div className={`w-13 h-13 rounded-2xl font-black text-base flex flex-col items-center justify-center shrink-0 shadow-md transition-transform group-hover:scale-105 border ${
+                selectedBank === 'GSB'
+                  ? 'bg-white/20 text-white border-white/40 backdrop-blur-xs'
+                  : 'bg-gradient-to-br from-pink-500 to-rose-700 text-white border-pink-300'
+              }`}>
+                <span className="text-sm font-black tracking-tight">GSB</span>
+                <span className="text-[9px] opacity-90 font-medium">ออมสิน</span>
               </div>
-              <div>
-                <div className="font-extrabold text-base text-slate-900">ธ.ออมสิน (GSB)</div>
-                <div className="text-xs text-slate-500 font-medium">ขนาดแม่แบบ 239 × 90 มม.</div>
+              <div className="flex-1">
+                <div className={`font-black text-base leading-tight ${selectedBank === 'GSB' ? 'text-white' : 'text-slate-900'}`}>
+                  ธ.ออมสิน (GSB)
+                </div>
+                <div className={`text-xs mt-0.5 font-medium ${selectedBank === 'GSB' ? 'text-pink-100' : 'text-slate-500'}`}>
+                  แม่แบบ 239 × 90 มม.
+                </div>
               </div>
+              {selectedBank === 'GSB' && (
+                <div className="w-6 h-6 rounded-full bg-white text-pink-700 flex items-center justify-center font-bold text-xs shadow-xs">
+                  ✓
+                </div>
+              )}
             </button>
           </div>
         </div>
@@ -595,19 +663,21 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
                 setHistorySearchTerm('');
                 setShowHistoryPickerModal(true);
               }}
-              className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border-2 border-red-300 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-800 border-2 border-red-300 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
               title="ดึงข้อมูลจากประวัติที่เคยสั่งจ่ายเจ้านั้นในเดือนก่อนๆ มาออกเป็นเช็คฉบับใหม่ในรอบนี้ โดยไม่ถือว่าเป็นการพิมพ์ซ้ำ"
             >
-              <span>📋 ดึงประวัติสั่งจ่ายเดือนก่อน (ออกเช็คใหม่ ไม่ถือว่าพิมพ์ซ้ำ)</span>
+              <History className="w-4 h-4 text-red-700" />
+              <span className="hidden sm:inline">ดึงประวัติสั่งจ่ายเดือนก่อน</span>
+              <span className="sm:hidden">ดึงประวัติเดิม</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* 1. Date */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+            {/* 1. Date (วันที่ออกเช็ค) */}
             <div>
               <label className="block text-sm font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-red-700" />
-                <span>วันที่บนเช็ค:</span>
+                <span>วันที่ออกเช็ค:</span>
               </label>
               <input
                 id="chequeDateInput"
@@ -623,10 +693,27 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
 
             {/* 2. Dika Number (ไม่บังคับ) */}
             <div>
-              <label className="block text-sm font-bold text-slate-800 mb-1.5 flex items-center gap-1.5">
-                <Hash className="w-4 h-4 text-red-700" />
-                <span>เลขที่ฎีกา (ไม่บังคับ):</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                  <Hash className="w-4 h-4 text-red-700" />
+                  <span>เลขที่ฎีกา (ไม่บังคับ):</span>
+                </label>
+                {dikaNumber && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(dikaNumber);
+                      setQuickToast('คัดลอกเลขที่ฎีกาแล้ว');
+                      setTimeout(() => setQuickToast(null), 2000);
+                    }}
+                    className="text-[11px] text-red-700 hover:text-red-900 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    title="คัดลอกเลขที่ฎีกา"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>คัดลอก</span>
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 value={dikaNumber}
@@ -634,7 +721,7 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
                 placeholder="เช่น 142/69 (ไม่บังคับ)"
                 className="w-full h-12 px-3 text-base font-bold text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:outline-none"
               />
-              <span className="text-xs text-slate-500 mt-1 block">เลขอ้างอิงคลังรับฎีกา (เว้นว่างได้ถ้าไม่มี)</span>
+              <span className="text-xs text-slate-500 mt-1 block">เลขอ้างอิงคลังรับฎีกา</span>
             </div>
 
             {/* 3. Cheque Number */}
@@ -650,7 +737,7 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
                 placeholder="เช่น 1029384"
                 className="w-full h-12 px-3 text-base font-bold font-mono text-slate-900 bg-slate-50 border-2 border-slate-300 rounded-xl focus:bg-white focus:border-red-600 focus:outline-none"
               />
-              <span className="text-xs text-slate-500 mt-1 block">รันเลขอัตโนมัติตามใบก่อนหน้า</span>
+              <span className="text-xs text-slate-500 mt-1 block">รันเลขอัตโนมัติ</span>
             </div>
           </div>
 
@@ -742,25 +829,48 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
                   />
                 </div>
 
-                <div className="w-full sm:w-48 relative">
-                  <input
-                    ref={index === 0 ? firstAmountInputRef : undefined}
-                    type="text"
-                    value={item.amountStr}
-                    onChange={(e) => {
-                      handleItemAmountChange(item.id, e.target.value);
-                      if (missingFieldsModal) setMissingFieldsModal(null);
+                <div className="w-full sm:w-56 flex items-center gap-1.5">
+                  <div className="relative flex-1">
+                    <input
+                      ref={index === 0 ? firstAmountInputRef : undefined}
+                      type="text"
+                      value={item.amountStr}
+                      onChange={(e) => {
+                        handleItemAmountChange(item.id, e.target.value);
+                        if (missingFieldsModal) setMissingFieldsModal(null);
+                      }}
+                      placeholder="0.00"
+                      className={`w-full h-11 pl-3 pr-8 text-base font-black text-slate-900 text-right bg-white rounded-lg focus:border-red-600 focus:outline-none tabular-nums font-mono ${
+                        validationError && totalNumericAmount <= 0
+                          ? 'border-2 border-red-500 bg-red-50/30'
+                          : 'border border-slate-300'
+                      }`}
+                    />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                      บาท
+                    </span>
+                  </div>
+
+                  {/* Quick .00 fill button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = item.amountStr.trim();
+                      if (!cur) return;
+                      if (!cur.includes('.')) {
+                        handleItemAmountChange(item.id, cur + '.00');
+                      } else {
+                        const [w] = cur.split('.');
+                        handleItemAmountChange(item.id, (w || '0') + '.00');
+                      }
+                      setQuickToast('เติม .00 สตางค์ถ้วนแล้ว');
+                      setTimeout(() => setQuickToast(null), 2000);
                     }}
-                    placeholder="0.00"
-                    className={`w-full h-11 pl-3 pr-8 text-base font-black text-slate-900 text-right bg-white rounded-lg focus:border-red-600 focus:outline-none tabular-nums ${
-                      validationError && totalNumericAmount <= 0
-                        ? 'border-2 border-red-500 bg-red-50/30'
-                        : 'border border-slate-300'
-                    }`}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
-                    บาท
-                  </span>
+                    className="h-11 px-2.5 bg-slate-200 hover:bg-slate-300 active:scale-95 text-slate-800 rounded-lg text-xs font-mono font-black transition-all cursor-pointer shadow-2xs shrink-0"
+                    title="เติมจุดทศนิยม .00 สตางค์ถ้วนด่วน"
+                  >
+                    .00
+                  </button>
                 </div>
 
                 {items.length > 1 && (
@@ -806,60 +916,133 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
             )}
           </div>
 
-          {/* Grand Total Amount Display in Red & White Theme */}
-          <div className="bg-red-50/70 border-2 border-red-300 rounded-xl p-4 sm:p-5 mt-4 space-y-2">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-              <span className="text-sm font-extrabold text-red-900 uppercase">
-                ยอดสุทธิสั่งจ่ายบนหน้าเช็ค:
-              </span>
-              <div className="text-2xl sm:text-3xl font-black text-red-700 tabular-nums">
-                {netPaidAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 })} <span className="text-base font-bold text-slate-600">บาท</span>
+          {/* Grand Total Amount Display with Glassmorphism & High-End Financial Styling */}
+          <div className="relative overflow-hidden backdrop-blur-md bg-gradient-to-br from-white/95 via-red-50/80 to-white/90 border-2 border-red-200/90 rounded-2xl p-5 sm:p-6 mt-4 shadow-lg shadow-red-950/5 space-y-3.5">
+            {/* Ambient light glow */}
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-red-400/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 relative z-10">
+              <div>
+                <span className="text-xs font-black tracking-wider text-red-900 uppercase flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-600 animate-ping inline-block" />
+                  <span>ยอดสุทธิสั่งจ่ายบนหน้าเช็ค (NET AMOUNT)</span>
+                </span>
+                <span className="text-xs text-slate-500 block mt-0.5">
+                  คำนวณหักภาษี ณ ที่จ่ายเรียบร้อยแล้ว
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-2 bg-white/90 px-4 py-2 rounded-xl border border-red-200 shadow-sm">
+                <span className="text-xl sm:text-2xl font-black text-red-700">฿</span>
+                <span className="text-3xl sm:text-4xl font-mono font-black text-red-700 tabular-nums tracking-tight">
+                  {netPaidAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+                <span className="text-sm font-bold text-slate-600">บาท</span>
               </div>
             </div>
 
-            {/* Thai Baht text in large, clear Sarabun font */}
+            {/* Thai Baht text security banner */}
             {thaiText && (
-              <div className="pt-2 border-t border-red-200/80">
-                <span className="text-xs font-bold text-slate-500 block">จำนวนเงินตัวอักษร:</span>
-                <span className="text-base sm:text-lg font-bold text-red-900">
-                  ={thaiText}=
-                </span>
+              <div className="pt-3 border-t border-red-200/80 relative z-10">
+                <div className="bg-gradient-to-r from-amber-50/90 via-red-50/60 to-amber-50/90 border border-amber-200/80 rounded-xl p-3 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-red-800 text-white font-black text-[11px] uppercase tracking-wider">
+                      ตัวอักษร
+                    </span>
+                    <span className="text-base sm:text-lg font-bold text-red-950 font-serif">
+                      {thaiText}
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/70 border border-emerald-300 px-2 py-0.5 rounded-md flex items-center gap-1 self-start sm:self-center">
+                    <Check className="w-3 h-3" />
+                    <span>บาทถ้วนสมบูรณ์</span>
+                  </span>
+                </div>
               </div>
             )}
           </div>
         </div>
 
+        {/* Real-time Physical Cheque Preview (Live Cheque Paper) */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>ภาพจำลองตัวอย่างเช็คจริง (LIVE PREVIEW)</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowLivePreview(!showLivePreview)}
+              className="text-xs font-bold text-slate-600 hover:text-red-700 flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              {showLivePreview ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span>ซ่อนตัวอย่าง</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>แสดงตัวอย่างเช็ค</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {showLivePreview && (
+            <LiveChequePreview
+              bankType={selectedBank}
+              chequeNumber={chequeNumber}
+              chequeDate={chequeDate}
+              payeeName={payeeName}
+              totalAmount={totalNumericAmount}
+              totalAmountThaiText={thaiText}
+              netPaidAmount={netPaidAmount}
+              dikaNumber={dikaNumber}
+              strikeBearer={strikeBearer}
+              crossingType={crossingType}
+              onNavigateToTemplates={onNavigateToTemplates}
+            />
+          )}
+        </div>
+
         {/* Action Buttons: 2 Clear options (Save Only vs Save & Print Now) */}
-        <div className="bg-white border-2 border-red-200 rounded-2xl p-5 sm:p-6 shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="bg-white border-2 border-red-200 rounded-2xl p-4 sm:p-6 shadow-md flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <button
             type="button"
             onClick={handleRequestClearForm}
-            className="w-full sm:w-auto px-5 py-3.5 bg-white hover:bg-slate-100 text-slate-700 border-2 border-slate-300 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full sm:w-auto px-4 py-3 bg-white hover:bg-slate-100 text-slate-700 border-2 border-slate-300 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            title="ล้างข้อมูลเริ่มใหม่"
           >
             <RotateCcw className="w-4 h-4 text-slate-500" />
-            <span>ล้างข้อมูลเริ่มใหม่</span>
+            <span className="hidden sm:inline">ล้างข้อมูลเริ่มใหม่</span>
+            <span className="sm:hidden">ล้างข้อมูล</span>
           </button>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             {/* Button 1: Save Only (ยังไม่พิมพ์ ค่อยพิมพ์ทีหลัง) */}
             <button
               type="button"
               onClick={handleInitiateSaveOnly}
-              className="w-full sm:w-auto px-6 py-3.5 bg-white hover:bg-red-50 text-red-800 border-2 border-red-400 rounded-xl font-extrabold text-base transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-5 py-3.5 bg-white hover:bg-red-50 text-red-800 border-2 border-red-400 rounded-xl font-extrabold text-sm sm:text-base transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               title="บันทึกข้อมูลเข้าระบบไว้ก่อน สถานะจะเป็น 'รอพิมพ์' สามารถมาสั่งพิมพ์จากหน้าประวัติหรือแดชบอร์ดได้ตลอดเวลา"
             >
               <Save className="w-5 h-5 text-red-700" />
-              <span>💾 บันทึกข้อมูล (ยังไม่พิมพ์ตอนนี้)</span>
+              <span>บันทึกข้อมูล (ยังไม่พิมพ์)</span>
             </button>
 
-            {/* Button 2: Save and Print Immediately */}
+            {/* Button 2: Save and Print Immediately with Ctrl+P badge */}
             <button
               type="button"
               onClick={handleInitiateSaveAndPrint}
-              className="w-full sm:w-auto px-8 py-3.5 bg-red-700 hover:bg-red-800 active:bg-red-900 text-white rounded-xl font-black text-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer ring-2 ring-red-300"
+              className="w-full sm:w-auto px-6 py-3.5 bg-red-700 hover:bg-red-800 active:bg-red-900 text-white rounded-xl font-black text-base sm:text-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2.5 cursor-pointer ring-2 ring-red-300 group"
+              title="บันทึกและสั่งพิมพ์เช็คทันที (คีย์ลัด: Ctrl + P)"
             >
-              <Printer className="w-6 h-6" />
-              <span>🖨️ บันทึกและสั่งพิมพ์ทันที</span>
+              <Printer className="w-5 h-5 group-hover:scale-110 transition-transform" />
+              <span>บันทึกและสั่งพิมพ์ทันที</span>
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-red-900/80 text-white text-[11px] font-mono font-bold border border-red-500/50 shadow-inner">
+                Ctrl+P
+              </kbd>
             </button>
           </div>
         </div>
@@ -1086,7 +1269,7 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
                 <span className="font-bold text-slate-800">{getBankNameThai(selectedBank)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500 font-semibold">วันที่บนเช็ค:</span>
+                <span className="text-slate-500 font-semibold">วันที่ออกเช็ค:</span>
                 <span className="font-bold text-slate-800">{formatThaiDate(chequeDate)}</span>
               </div>
             </div>
@@ -1425,6 +1608,14 @@ export const EasyChequeWriter: React.FC<EasyChequeWriterProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Quick toast notification */}
+      {quickToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 text-xs font-bold animate-in slide-in-from-bottom-2 border border-slate-700">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{quickToast}</span>
         </div>
       )}
     </div>
